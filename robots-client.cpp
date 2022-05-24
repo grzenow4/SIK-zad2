@@ -5,7 +5,6 @@
 #include <csignal>
 #include <cstdarg>
 #include <cstdint>
-#include <iostream>
 #include <netdb.h>
 #include <sstream>
 #include <unistd.h>
@@ -14,10 +13,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include "ClientParameters.h"
+#include "Client.h"
 
 namespace po = boost::program_options;
 using boost::asio::ip::tcp;
+using boost::asio::ip::udp;
 
 static void check_port(int port) {
     if (port < 0 || port > 65535) {
@@ -46,7 +46,7 @@ static void check_address(const std::string & address) {
         throw po::validation_error(po::validation_error::invalid_option_value);
     }
 
-    if (host.find('.') != std::string::npos || host.find(':') != std::string::npos) {
+    if (host.find(':') != std::string::npos) {
         boost::system::error_code ec;
         boost::asio::ip::address::from_string(host, ec);
         if (ec) {
@@ -109,26 +109,25 @@ int main(int argc, char *argv[]) {
                                         get_port_from_address(vm["server-address"].as<std::string>()));
 
         boost::asio::io_context io_context;
-        tcp::resolver resolver(io_context);
-        tcp::resolver::results_type endpoints = resolver.resolve(clientParams.get_host_server(), std::to_string(clientParams.get_port_server()));
-        tcp::socket socket(io_context);
-        boost::asio::connect(socket, endpoints);
+        tcp::resolver resolver1(io_context);
+        tcp::resolver::results_type endpoints =
+                resolver1.resolve(clientParams.get_host_server(),
+                                 std::to_string(clientParams.get_port_server()));
+        udp::resolver resolver2(io_context);
+        udp::endpoint receiver_endpoint =
+                *resolver2.resolve(clientParams.get_host_gui(),
+                                  std::to_string(clientParams.get_port_gui())).begin();
+
+        Client client(io_context, endpoints, receiver_endpoint, clientParams);
 
         for (;;) {
-            boost::array<char, 256> buf{};
-            boost::system::error_code err;
-
-            size_t len = socket.read_some(boost::asio::buffer(buf), err);
-
-            if (err == boost::asio::error::eof)
-                break;
-            else if (err)
-                throw boost::system::system_error(err);
-
-            std::cout.write(buf.data(), static_cast<long>(len));
+            client.receive_message();
         }
+
     } catch (std::exception &err) {
         std::cerr << "Error: " << err.what() << '\n';
         exit(42);
     }
+
+    return 0;
 }

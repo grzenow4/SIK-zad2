@@ -13,6 +13,6 @@ ENDIF (Boost_FOUND)
 
 SET(USED_LIBS ${Boost_SYSTEM_LIBRARY} ${Boost_PROGRAM_OPTIONS_LIBRARY})
 
-add_executable(robots-client robots-client.cpp)
+add_executable(robots-client robots-client.cpp Client.cpp)
 
 TARGET_LINK_LIBRARIES(robots-client ${USED_LIBS})
