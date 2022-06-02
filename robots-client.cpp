@@ -1,17 +1,6 @@
-#include <boost/asio.hpp>
-#include <boost/program_options.hpp>
-#include <boost/system.hpp>
-
-#include <csignal>
-#include <cstdarg>
 #include <cstdint>
-#include <netdb.h>
 #include <sstream>
 #include <unistd.h>
-
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
 
 #include "Client.h"
 
@@ -25,7 +14,7 @@ static void check_port(int port) {
     }
 }
 
-static void check_address(const std::string & address) {
+static void check_address(const std::string &address) {
     size_t colon_idx = address.size() - 1;
     while (colon_idx > 0 && address[colon_idx] != ':')
         colon_idx--;
@@ -50,12 +39,13 @@ static void check_address(const std::string & address) {
         boost::system::error_code ec;
         boost::asio::ip::address::from_string(host, ec);
         if (ec) {
-            throw po::validation_error(po::validation_error::invalid_option_value);
+            throw po::validation_error(
+                    po::validation_error::invalid_option_value);
         }
     }
 }
 
-static std::string get_host_from_address(const std::string & address) {
+static std::string get_host_from_address(const std::string &address) {
     size_t colon_idx = address.size() - 1;
     while (colon_idx > 0 && address[colon_idx] != ':')
         colon_idx--;
@@ -63,67 +53,73 @@ static std::string get_host_from_address(const std::string & address) {
     return address.substr(0, colon_idx);
 }
 
-static uint16_t get_port_from_address(const std::string & address) {
+static uint16_t get_port_from_address(const std::string &address) {
     size_t colon_idx = address.size() - 1;
     while (colon_idx > 0 && address[colon_idx] != ':')
         colon_idx--;
 
-    return (uint16_t) std::strtoul(address.substr(colon_idx + 1).c_str(), NULL, 10);
+    return (uint16_t) std::strtoul(address.substr(colon_idx + 1).c_str(), NULL,
+                                   10);
 }
 
 int main(int argc, char *argv[]) {
     ClientParameters clientParams;
 
     try {
-        int port_init = 0;
+        int port_init;
         std::string nick_init, gui_addr_init, ser_addr_init;
 
         po::options_description desc("Allowed options");
         desc.add_options()
                 ("gui-address,d",
-                    po::value<std::string>(&gui_addr_init)->required()->notifier(&check_address),
-                    "gui address")
+                 po::value<std::string>(&gui_addr_init)->required()->notifier(
+                         &check_address),
+                 "gui address")
                 ("help,h", "produce help message")
                 ("player-name,n",
-                    po::value<std::string>(&nick_init)->required(), "input player name")
+                 po::value<std::string>(&nick_init)->required(),
+                 "player name")
                 ("port,p",
-                    po::value<int>(&port_init)->required()->notifier(&check_port),
-                    "port number")
+                 po::value<int>(&port_init)->required()->notifier(&check_port),
+                 "port number")
                 ("server-address,s",
-                    po::value<std::string>(&ser_addr_init)->required()->notifier(&check_address),
-                    "server address");
+                 po::value<std::string>(&ser_addr_init)->required()->notifier(
+                         &check_address),
+                 "server address");
 
         po::variables_map vm;
         po::store(po::parse_command_line(argc, argv, desc), vm);
         if (vm.count("help")) {
-            std::cout << "Usage: " << argv[0] << " [options]\n" << desc << "\n";
+            std::cout << "Usage: " << argv[0] << " [options]\n" << desc << '\n';
             return 1;
         }
         po::notify(vm);
 
         clientParams = ClientParameters(vm["player-name"].as<std::string>(),
                                         (uint16_t) vm["port"].as<int>(),
-                                        get_host_from_address(vm["gui-address"].as<std::string>()),
-                                        get_port_from_address(vm["gui-address"].as<std::string>()),
-                                        get_host_from_address(vm["server-address"].as<std::string>()),
-                                        get_port_from_address(vm["server-address"].as<std::string>()));
+                                        get_host_from_address(
+                                                vm["gui-address"].as<std::string>()),
+                                        get_port_from_address(
+                                                vm["gui-address"].as<std::string>()),
+                                        get_host_from_address(
+                                                vm["server-address"].as<std::string>()),
+                                        get_port_from_address(
+                                                vm["server-address"].as<std::string>()));
 
         boost::asio::io_context io_context;
-        tcp::resolver resolver1(io_context);
-        tcp::resolver::results_type endpoints =
-                resolver1.resolve(clientParams.get_host_server(),
-                                 std::to_string(clientParams.get_port_server()));
-        udp::resolver resolver2(io_context);
-        udp::endpoint receiver_endpoint =
-                *resolver2.resolve(clientParams.get_host_gui(),
-                                  std::to_string(clientParams.get_port_gui())).begin();
 
-        Client client(io_context, endpoints, receiver_endpoint, clientParams);
+        tcp::resolver resolver_server(io_context);
+        tcp::resolver::results_type endpoint_server = resolver_server.resolve(
+                clientParams.get_host_server(),
+                std::to_string(clientParams.get_port_server()));
 
-        for (;;) {
-            client.receive_message();
-        }
+        udp::resolver resolver_gui_send(io_context);
+        udp::endpoint endpoint_gui_send = *resolver_gui_send.resolve(
+                clientParams.get_host_gui(),
+                std::to_string(clientParams.get_port_gui())).begin();
 
+        Client client(io_context, endpoint_server, endpoint_gui_send,
+                      clientParams);
     } catch (std::exception &err) {
         std::cerr << "Error: " << err.what() << '\n';
         exit(42);

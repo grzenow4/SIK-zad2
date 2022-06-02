@@ -1,71 +1,135 @@
 #pragma once
 
+#include <boost/array.hpp>
+#include <boost/asio.hpp>
+#include <boost/program_options.hpp>
+#include <boost/system.hpp>
+
+#include <coroutine>
 #include <cstring>
-#include <iostream>
 #include <list>
 #include <map>
 
+#include "GameTypes.h"
 #include "ServerParameters.h"
 
-#define BUFF_SIZE 65535
+#define BUFF_SIZE 65507
 
 class Message {
-
 private:
-    char _buffer[BUFF_SIZE];
-    size_t _read_idx;
-    size_t _buf_len;
+    char _buffer_tcp[BUFF_SIZE];
+    size_t _read_idx_tcp;
+    size_t _buf_len_tcp;
+    char _buffer_udp[BUFF_SIZE];
+    size_t _read_idx_udp;
+    size_t _buf_len_udp;
 
 public:
-    Message() : _read_idx(0), _buf_len(0) {}
+    Message() : _read_idx_tcp(0), _buf_len_tcp(0),
+                _read_idx_udp(0), _buf_len_udp(0) {}
 
-    const char* get_message() const {
-        return _buffer;
+    char* get_buf_tcp() {
+        return _buffer_tcp;
     }
 
-    char* get_message() {
-        return _buffer;
+    size_t get_read_idx_tcp() {
+        return _read_idx_tcp;
     }
 
-    size_t get_read_idx() const {
-        return _read_idx;
+    size_t get_buf_len_tcp() {
+        return _buf_len_tcp;
     }
 
-    size_t get_buf_len() const {
-        _buf_len;
+    char* get_buf_udp() {
+        return _buffer_udp;
     }
 
-    void set_read_idx(size_t val) {
-        _read_idx = val;
+    size_t get_read_idx_udp() {
+        return _read_idx_udp;
     }
 
-    void set_buf_len(size_t val) {
-        _buf_len = val;
+    size_t get_buf_len_udp() {
+        return _buf_len_udp;
+    }
+
+    void set_buf_len_tcp(size_t len) {
+        _buf_len_tcp = len;
     }
 
 private:
-    template<typename T>
-    void receive(T &num);
+    void clear_buffer_tcp();
 
-    void receive(std::string &str);
+    void clear_buffer_udp();
 
-    void receive(std::pair<std::string, std::string> &player);
+    boost::asio::awaitable<void> read_message(size_t n);
 
-    void receive(std::pair<uint16_t, uint16_t> &position);
+    boost::asio::awaitable<void> read_message_udp();
 
-    template<typename T>
-    void receive_list(std::list<T> &list);
+    boost::asio::awaitable<void> receive(uint8_t &num);
 
-//    template<typename K, typename V>
-//    void receive_map(std::map<K, V> &map);
+    boost::asio::awaitable<void> receive(uint16_t &num);
 
-    void receive_hello(ServerParameters &server_params);
+    boost::asio::awaitable<void> receive(uint32_t &num);
 
-    void receive_accepted_player();
+    boost::asio::awaitable<void> receive(std::string &str);
 
-    void receive_game_started();
+    boost::asio::awaitable<void> receive(Player &player);
 
-    void receive_turn();
+    boost::asio::awaitable<void> receive(Position &position);
 
-    void receive_game_ended();
+    boost::asio::awaitable<void> receive(BombPlaced &event);
+
+    boost::asio::awaitable<void> receive(BombExploded &event);
+
+    boost::asio::awaitable<void> receive(PlayerMoved &event);
+
+    boost::asio::awaitable<void> receive(BlockPlaced &event);
+
+    boost::asio::awaitable<void> receive(std::list<std::shared_ptr<Event>> &list);
+
+    boost::asio::awaitable<void> receive(std::list<player_id_t> &list);
+
+    boost::asio::awaitable<void> receive(std::list<Position> &list);
+
+    boost::asio::awaitable<void> receive(std::map<player_id_t, Player> &map);
+
+    boost::asio::awaitable<void> receive(std::map<player_id_t, score_t> &map);
+
+    void send(uint8_t num);
+
+    void send(const std::string &str);
+
+    boost::asio::awaitable<void> send_join();
+
+    boost::asio::awaitable<void> send_place_bomb();
+
+    boost::asio::awaitable<void> send_place_block();
+
+    boost::asio::awaitable<void> send_move(Direction direction);
+
+    void send_gui(uint8_t num);
+
+    void send_gui(uint16_t num);
+
+    void send_gui(uint32_t num);
+
+    void send_gui(const std::string &str);
+
+    void send_gui(Player player);
+
+    void send_gui(Position position);
+
+    void send_gui(Bomb bomb);
+
+    void send_gui(std::list<Position> list);
+
+    void send_gui(std::set<Position> set);
+
+    void send_gui(std::map<bomb_id_t, Bomb> map);
+
+    void send_gui(std::map<player_id_t, Player> map);
+
+    void send_gui(std::map<player_id_t, Position> map);
+
+    void send_gui(std::map<player_id_t, score_t> map);
 };
