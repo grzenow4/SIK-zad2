@@ -1,12 +1,9 @@
 #include "Client.h"
 
-#include <iostream>
-
 Client::Client(boost::asio::io_context &io_context,
                const tcp::resolver::results_type &endpoint_server,
                udp::endpoint endpoint_gui,
                ClientParameters client_params) :
-        _io_context(io_context),
         _tcp_socket(io_context),
         _endpoint_server(endpoint_server),
         _endpoint_gui(endpoint_gui),
@@ -27,7 +24,7 @@ Client::Client(boost::asio::io_context &io_context,
     co_spawn(io_context, server_listener(), boost::asio::detached);
     co_spawn(io_context, gui_listener(), boost::asio::detached);
 
-    _io_context.run();
+    io_context.run();
 }
 
 boost::asio::awaitable<void> Client::server_listener() {
@@ -48,30 +45,30 @@ boost::asio::awaitable<void> Client::gui_listener() {
 }
 
 void Client::clear_buffer() {
-    buf_length = 0;
-    read_idx = 0;
+    _buf_len_tcp = 0;
+    _read_idx_tcp = 0;
 }
 
 void Client::clear_buffer_udp() {
-    buf_len_udp = 0;
-    read_idx_udp = 0;
+    _buf_len_udp = 0;
+    _read_idx_udp = 0;
 }
 
 boost::asio::awaitable<void> Client::read_message(size_t n) {
     size_t already_read = 0;
     while (already_read < n) {
         already_read += co_await _tcp_socket.async_read_some(
-                boost::asio::buffer(buf + buf_length + already_read,
+                boost::asio::buffer(_buf_tcp + _buf_len_tcp + already_read,
                                     n - already_read),
                 boost::asio::use_awaitable);
     }
-    buf_length += n;
+    _buf_len_tcp += n;
     co_return;
 }
 
 boost::asio::awaitable<void> Client::read_message_udp() {
-    buf_len_udp = co_await _udp_socket_rec.async_receive(
-            boost::asio::buffer(buf_udp),
+    _buf_len_udp = co_await _udp_socket_rec.async_receive(
+            boost::asio::buffer(_buf_udp),
             boost::asio::use_awaitable);
     co_return;
 }
@@ -79,16 +76,16 @@ boost::asio::awaitable<void> Client::read_message_udp() {
 boost::asio::awaitable<void> Client::receive(uint8_t &num) {
     uint64_t size = sizeof(uint8_t);
     co_await read_message(size);
-    memcpy(&num, &buf[read_idx], size);
-    read_idx += size;
+    memcpy(&num, _buf_tcp + _read_idx_tcp, size);
+    _read_idx_tcp += size;
     co_return;
 }
 
 boost::asio::awaitable<void> Client::receive(uint16_t &num) {
     uint64_t size = sizeof(uint16_t);
     co_await read_message(size);
-    memcpy(&num, &buf[read_idx], size);
-    read_idx += size;
+    memcpy(&num, _buf_tcp + _read_idx_tcp, size);
+    _read_idx_tcp += size;
     num = ntohs(num);
     co_return;
 }
@@ -96,19 +93,19 @@ boost::asio::awaitable<void> Client::receive(uint16_t &num) {
 boost::asio::awaitable<void> Client::receive(uint32_t &num) {
     uint64_t size = sizeof(uint32_t);
     co_await read_message(size);
-    memcpy(&num, &buf[read_idx], size);
-    read_idx += size;
+    memcpy(&num, _buf_tcp + _read_idx_tcp, size);
+    _read_idx_tcp += size;
     num = ntohl(num);
     co_return;
 }
 
 boost::asio::awaitable<void> Client::receive(std::string &str) {
     co_await read_message(1);
-    uint64_t size = (uint64_t) buf[read_idx];
-    read_idx++;
+    uint64_t size = (uint64_t) _buf_tcp[_read_idx_tcp];
+    _read_idx_tcp++;
     co_await read_message(size);
-    str = {buf + read_idx, size};
-    read_idx += size;
+    str = {_buf_tcp + _read_idx_tcp, size};
+    _read_idx_tcp += size;
     co_return;
 }
 
@@ -127,7 +124,6 @@ boost::asio::awaitable<void> Client::receive(Position &position) {
 boost::asio::awaitable<void> Client::receive(BombPlaced &event) {
     co_await receive(event.bomb_id);
     co_await receive(event.position);
-    event.timer = _server_params.get_bomb_timer();
     co_return;
 }
 
@@ -149,7 +145,7 @@ boost::asio::awaitable<void> Client::receive(BlockPlaced &event) {
     co_return;
 }
 
-boost::asio::awaitable<void> Client::receive(std::list<std::shared_ptr<Event>> &list) {
+boost::asio::awaitable<void> Client::receive(std::list<Event> &list) {
     uint32_t size;
     co_await receive(size);
 
@@ -165,20 +161,19 @@ boost::asio::awaitable<void> Client::receive(std::list<std::shared_ptr<Event>> &
         switch (event_id) {
             case 0:
                 co_await receive(bomb_placed);
-                list.emplace_back(std::make_shared<BombPlaced>(bomb_placed));
+                list.emplace_back(BombPlacedT, bomb_placed);
                 break;
             case 1:
                 co_await receive(bomb_exploded);
-                list.emplace_back(
-                        std::make_shared<BombExploded>(bomb_exploded));
+                list.emplace_back(BombExplodedT, bomb_exploded);
                 break;
             case 2:
                 co_await receive(player_moved);
-                list.emplace_back(std::make_shared<PlayerMoved>(player_moved));
+                list.emplace_back(PlayerMovedT, player_moved);
                 break;
             case 3:
                 co_await receive(block_placed);
-                list.emplace_back(std::make_shared<BlockPlaced>(block_placed));
+                list.emplace_back(BlockPlacedT, block_placed);
                 break;
         }
     }
@@ -265,9 +260,6 @@ boost::asio::awaitable<void> Client::receive_hello() {
                                       0,
                                       size_x,
                                       size_y);
-    _game_status.explosion_radius = _server_params.get_explosion_radius();
-    _game_status.size_x = _server_params.get_size_x();
-    _game_status.size_y = _server_params.get_size_y();
     co_return;
 }
 
@@ -290,14 +282,101 @@ boost::asio::awaitable<void> Client::receive_game_started() {
     co_return;
 }
 
+void Client::resolve(BombPlaced event) {
+    Bomb bomb{.bomb_id = event.bomb_id,
+              .position = event.position,
+              .timer = _server_params.get_bomb_timer()};
+    _game_status.bombs.insert({event.bomb_id, bomb});
+}
+
+void Client::resolve(BombExploded event) {
+    Position exp_pos = _game_status.bombs.at(event.bomb_id).position;
+    for (int i = exp_pos.x;
+            i >= 0 && i >= exp_pos.x - _server_params.get_explosion_radius(); i--) {
+        Position p{(uint16_t) i, exp_pos.y};
+        _game_status.explosions.insert(p);
+        if (std::find(event.blocks_destroyed.begin(), event.blocks_destroyed.end(),
+                        p) != event.blocks_destroyed.end()) {
+            break;
+        }
+    }
+    for (int i = exp_pos.x;
+            i < _server_params.get_size_x() &&
+            i <= exp_pos.x + _server_params.get_explosion_radius(); i++) {
+        Position p{(uint16_t) i, exp_pos.y};
+        _game_status.explosions.insert(p);
+        if (std::find(event.blocks_destroyed.begin(), event.blocks_destroyed.end(),
+                        p) != event.blocks_destroyed.end()) {
+            break;
+        }
+    }
+    for (int i = exp_pos.y;
+            i >= 0 && i >= exp_pos.y - _server_params.get_explosion_radius(); i--) {
+        Position p{exp_pos.x, (uint16_t) i};
+        _game_status.explosions.insert(p);
+        if (std::find(event.blocks_destroyed.begin(), event.blocks_destroyed.end(),
+                        p) != event.blocks_destroyed.end()) {
+            break;
+        }
+    }
+    for (int i = exp_pos.y;
+            i < _server_params.get_size_y() &&
+            i <= exp_pos.y + _server_params.get_explosion_radius(); i++) {
+        Position p{exp_pos.x, (uint16_t) i};
+        _game_status.explosions.insert(p);
+        if (std::find(event.blocks_destroyed.begin(), event.blocks_destroyed.end(),
+                        p) != event.blocks_destroyed.end()) {
+            break;
+        }
+    }
+
+    for (auto block: event.blocks_destroyed) {
+        _game_status.blocks.remove(block);
+    }
+
+    for (auto p_id: event.robots_destroyed) {
+        if (!_game_status.players_scored.contains(p_id)) {
+            _game_status.players_scored.insert(p_id);
+            auto score = _game_status.scores.at(p_id);
+            score++;
+            _game_status.scores.erase(p_id);
+            _game_status.scores.insert({p_id, score});
+        }
+    }
+
+    _game_status.bombs.erase(event.bomb_id);
+}
+
+void Client::resolve(PlayerMoved event) {
+    _game_status.player_positions.erase(event.player_id);
+    _game_status.player_positions.insert({event.player_id, event.position});
+}
+
+void Client::resolve(BlockPlaced event) {
+    _game_status.blocks.push_back(event.position);
+}
+
 boost::asio::awaitable<void> Client::receive_turn() {
     uint16_t turn;
-    std::list<std::shared_ptr<Event>> events;
+    std::list<Event> events;
     co_await receive(turn);
     co_await receive(events);
     _game_status.turn = turn;
     for (auto event: events) {
-        event->resolve(_game_status);
+        switch (event.get_type()) {
+            case BombPlacedT:
+                resolve(std::get<BombPlaced>(event.item));
+                break;
+            case BombExplodedT:
+                resolve(std::get<BombExploded>(event.item));
+                break;
+            case PlayerMovedT:
+                resolve(std::get<PlayerMoved>(event.item));
+                break;
+            case BlockPlacedT:
+                resolve(std::get<BlockPlaced>(event.item));
+                break;
+        }
     }
     co_return;
 }
@@ -306,6 +385,8 @@ boost::asio::awaitable<void> Client::receive_game_ended() {
     std::map<player_id_t, score_t> scores;
     co_await receive(scores);
     _in_lobby = true;
+    _game_status.turn = 0;
+    _game_status.blocks.clear();
     co_return;
 }
 
@@ -336,7 +417,7 @@ boost::asio::awaitable<void> Client::receive_message() {
             co_await send_lobby();
             break;
         default:
-            exit(42);
+            exit(1);
     }
 
     clear_buffer();
@@ -347,21 +428,21 @@ boost::asio::awaitable<void> Client::receive_input_message() {
     clear_buffer_udp();
     co_await read_message_udp();
 
-    switch ((int) buf_udp[0]) {
+    switch ((int) _buf_udp[0]) {
         case 0: // PlaceBomb
-            _valid_msg = (buf_len_udp == 1);
+            _valid_msg = (_buf_len_udp == 1);
             if (_valid_msg && !_in_lobby)
                 co_await send_place_bomb();
             break;
         case 1: // PlaceBlock
-            _valid_msg = (buf_len_udp == 1);
+            _valid_msg = (_buf_len_udp == 1);
             if (_valid_msg && !_in_lobby)
                 co_await send_place_block();
             break;
         case 2: // Move
-            _valid_msg = (buf_len_udp == 2 && buf_udp[1] >= 0 && buf_udp[1] <= 3);
+            _valid_msg = (_buf_len_udp == 2 && _buf_udp[1] >= 0 && _buf_udp[1] <= 3);
             if (_valid_msg && !_in_lobby)
-                co_await send_move((Direction) buf_udp[1]);
+                co_await send_move((Direction) _buf_udp[1]);
             break;
         default:
             _valid_msg = false;
@@ -373,15 +454,15 @@ boost::asio::awaitable<void> Client::receive_input_message() {
 
 void Client::send(uint8_t num) {
     uint64_t size = sizeof(uint8_t);
-    memcpy(&buf[buf_length], &num, size);
-    buf_length += size;
+    memcpy(_buf_tcp + _buf_len_tcp, &num, size);
+    _buf_len_tcp += size;
 }
 
 void Client::send(const std::string &str) {
     uint8_t size = (uint8_t) str.size();
     send(size);
-    memcpy(&buf[buf_length], str.c_str(), size);
-    buf_length += str.size();
+    memcpy(_buf_tcp + _buf_len_tcp, str.c_str(), size);
+    _buf_len_tcp += str.size();
 }
 
 boost::asio::awaitable<void> Client::send_join() {
@@ -389,7 +470,7 @@ boost::asio::awaitable<void> Client::send_join() {
     uint8_t message_no = 0;
     send(message_no);
     send(_client_params.get_nickname());
-    co_await _tcp_socket.async_send(boost::asio::buffer(buf, buf_length),
+    co_await _tcp_socket.async_send(boost::asio::buffer(_buf_tcp, _buf_len_tcp),
                                     boost::asio::use_awaitable);
     clear_buffer();
     co_return;
@@ -399,7 +480,7 @@ boost::asio::awaitable<void> Client::send_place_bomb() {
     clear_buffer();
     uint8_t message_no = 1;
     send(message_no);
-    co_await _tcp_socket.async_send(boost::asio::buffer(buf, buf_length),
+    co_await _tcp_socket.async_send(boost::asio::buffer(_buf_tcp, _buf_len_tcp),
                                     boost::asio::use_awaitable);
     clear_buffer();
     co_return;
@@ -409,7 +490,7 @@ boost::asio::awaitable<void> Client::send_place_block() {
     clear_buffer();
     uint8_t message_no = 2;
     send(message_no);
-    co_await _tcp_socket.async_send(boost::asio::buffer(buf, buf_length),
+    co_await _tcp_socket.async_send(boost::asio::buffer(_buf_tcp, _buf_len_tcp),
                                     boost::asio::use_awaitable);
     clear_buffer();
     co_return;
@@ -420,7 +501,7 @@ boost::asio::awaitable<void> Client::send_move(Direction direction) {
     uint8_t message_no = 3;
     send(message_no);
     send((uint8_t) direction);
-    co_await _tcp_socket.async_send(boost::asio::buffer(buf, buf_length),
+    co_await _tcp_socket.async_send(boost::asio::buffer(_buf_tcp, _buf_len_tcp),
                                     boost::asio::use_awaitable);
     clear_buffer();
     co_return;
@@ -428,29 +509,29 @@ boost::asio::awaitable<void> Client::send_move(Direction direction) {
 
 void Client::send_gui(uint8_t num) {
     uint64_t size = sizeof(uint8_t);
-    memcpy(&buf_udp[buf_len_udp], &num, size);
-    buf_len_udp += size;
+    memcpy(_buf_udp + _buf_len_udp, &num, size);
+    _buf_len_udp += size;
 }
 
 void Client::send_gui(uint16_t num) {
     uint64_t size = sizeof(uint16_t);
     num = htons(num);
-    memcpy(&buf_udp[buf_len_udp], &num, size);
-    buf_len_udp += size;
+    memcpy(_buf_udp + _buf_len_udp, &num, size);
+    _buf_len_udp += size;
 }
 
 void Client::send_gui(uint32_t num) {
     uint64_t size = sizeof(uint32_t);
     num = htonl(num);
-    memcpy(&buf_udp[buf_len_udp], &num, size);
-    buf_len_udp += size;
+    memcpy(_buf_udp + _buf_len_udp, &num, size);
+    _buf_len_udp += size;
 }
 
 void Client::send_gui(const std::string &str) {
     uint8_t size = (uint8_t) str.size();
     send_gui(size);
-    memcpy(&buf_udp[buf_len_udp], str.c_str(), size);
-    buf_len_udp += size;
+    memcpy(_buf_udp + _buf_len_udp, str.c_str(), size);
+    _buf_len_udp += size;
 }
 
 void Client::send_gui(Player player) {
@@ -532,7 +613,7 @@ boost::asio::awaitable<void> Client::send_lobby() {
     send_gui(_server_params.get_bomb_timer());
     send_gui(_game_status.players);
     co_await _udp_socket_send.async_send_to(
-            boost::asio::buffer(buf_udp, buf_len_udp),
+            boost::asio::buffer(_buf_udp, _buf_len_udp),
             _endpoint_gui,
             boost::asio::use_awaitable);
     clear_buffer_udp();
@@ -555,9 +636,12 @@ boost::asio::awaitable<void> Client::send_game() {
     send_gui(_game_status.explosions);
     send_gui(_game_status.scores);
     co_await _udp_socket_send.async_send_to(
-            boost::asio::buffer(buf_udp, buf_len_udp),
+            boost::asio::buffer(_buf_udp, _buf_len_udp),
             _endpoint_gui,
             boost::asio::use_awaitable);
+    for (auto &pair : _game_status.bombs) {
+        pair.second.timer--;
+    }
     _game_status.explosions.clear();
     _game_status.players_scored.clear();
     clear_buffer_udp();

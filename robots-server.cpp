@@ -33,8 +33,9 @@ int main(int argc, char *argv[]) {
     ServerParameters server_params;
 
     try {
-        int bomb_timer, players_count, turn_duration, explosion_radius,
+        int bomb_timer, players_count, explosion_radius,
                 initial_blocks, game_length, port, seed, size_x, size_y;
+        uint64_t turn_duration;
         std::string name;
 
         po::options_description desc("Allowed options");
@@ -48,7 +49,7 @@ int main(int argc, char *argv[]) {
                          &check_uint8),
                  "players count")
                 ("turn-duration,d",
-                 po::value<int>(&turn_duration)->required(), // todo notifier
+                 po::value<uint64_t>(&turn_duration)->required(),
                  "turn duration")
                 ("explosion-radius,e",
                  po::value<int>(&explosion_radius)->required()->notifier(
@@ -83,14 +84,17 @@ int main(int argc, char *argv[]) {
         po::store(po::parse_command_line(argc, argv, desc), vm);
         if (vm.count("help")) {
             std::cout << "Usage: " << argv[0] << " [options]\n" << desc << '\n';
-            return 1;
+            return 0;
+        }
+        if (!vm.count("seed")) {
+            seed = (int) std::chrono::system_clock::now().time_since_epoch().count();
         }
         po::notify(vm);
 
         server_params = ServerParameters(
                 (uint16_t) vm["bomb-timer"].as<int>(),
                 (uint8_t) vm["players-count"].as<int>(),
-                (uint64_t) vm["turn-duration"].as<int>(),
+                vm["turn-duration"].as<uint64_t>(),
                 (uint16_t) vm["explosion-radius"].as<int>(),
                 (uint16_t) vm["initial-blocks"].as<int>(),
                 (uint16_t) vm["game-length"].as<int>(),
@@ -101,16 +105,12 @@ int main(int argc, char *argv[]) {
                 (uint16_t) vm["size-y"].as<int>());
 
         boost::asio::io_context io_context;
-
-        tcp::resolver resolver(io_context);
-        tcp::resolver::results_type endpoint = resolver.resolve(
-                "127.0.0.1",
-                std::to_string(server_params.get_port()));
+        tcp::endpoint endpoint(tcp::v6(), server_params.get_port());
 
         Server server(io_context, endpoint, server_params);
     } catch (std::exception &err) {
         std::cerr << "Error: " << err.what() << '\n';
-        exit(42);
+        exit(1);
     }
 
     return 0;

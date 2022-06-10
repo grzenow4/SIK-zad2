@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
         po::store(po::parse_command_line(argc, argv, desc), vm);
         if (vm.count("help")) {
             std::cout << "Usage: " << argv[0] << " [options]\n" << desc << '\n';
-            return 1;
+            return 0;
         }
         po::notify(vm);
 
@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
                       clientParams);
     } catch (std::exception &err) {
         std::cerr << "Error: " << err.what() << '\n';
-        exit(42);
+        exit(1);
     }
 
     return 0;

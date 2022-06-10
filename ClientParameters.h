@@ -1,8 +1,5 @@
 #pragma once
 
-#include <iostream>
-#include <utility>
-
 class ClientParameters {
 private:
     std::string _nickname;

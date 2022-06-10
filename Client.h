@@ -18,7 +18,6 @@ using boost::asio::ip::udp;
 
 class Client {
 private:
-    boost::asio::io_context &_io_context;
     tcp::socket _tcp_socket;
     tcp::resolver::results_type _endpoint_server;
     udp::endpoint _endpoint_gui;
@@ -32,13 +31,13 @@ private:
     bool _in_lobby = true;
     bool _valid_msg = false;
 
-    char buf[BUFF_SIZE];
-    uint64_t read_idx = 0;
-    uint64_t buf_length = 0;
+    char _buf_tcp[BUFF_SIZE];
+    uint64_t _read_idx_tcp = 0;
+    uint64_t _buf_len_tcp = 0;
 
-    char buf_udp[BUFF_SIZE];
-    uint64_t read_idx_udp = 0;
-    uint64_t buf_len_udp = 0;
+    char _buf_udp[BUFF_SIZE];
+    uint64_t _read_idx_udp = 0;
+    uint64_t _buf_len_udp = 0;
 
 public:
     Client(boost::asio::io_context &io_context,
@@ -71,15 +70,15 @@ private:
 
     boost::asio::awaitable<void> receive(Position &position);
 
-    boost::asio::awaitable<void> receive(BombPlaced &event);
+    boost::asio::awaitable<void> receive(struct BombPlaced &event);
 
-    boost::asio::awaitable<void> receive(BombExploded &event);
+    boost::asio::awaitable<void> receive(struct BombExploded &event);
 
-    boost::asio::awaitable<void> receive(PlayerMoved &event);
+    boost::asio::awaitable<void> receive(struct PlayerMoved &event);
 
-    boost::asio::awaitable<void> receive(BlockPlaced &event);
+    boost::asio::awaitable<void> receive(struct BlockPlaced &event);
 
-    boost::asio::awaitable<void> receive(std::list<std::shared_ptr<Event>> &list);
+    boost::asio::awaitable<void> receive(std::list<Event> &list);
 
     boost::asio::awaitable<void> receive(std::list<player_id_t> &list);
 
@@ -94,6 +93,14 @@ private:
     boost::asio::awaitable<void> receive_accepted_player();
 
     boost::asio::awaitable<void> receive_game_started();
+
+    void resolve(struct BombPlaced event);
+
+    void resolve(struct BombExploded event);
+
+    void resolve(struct PlayerMoved event);
+
+    void resolve(struct BlockPlaced event);
 
     boost::asio::awaitable<void> receive_turn();
 
