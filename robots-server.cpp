@@ -34,8 +34,9 @@ int main(int argc, char *argv[]) {
 
     try {
         int bomb_timer, players_count, explosion_radius,
-                initial_blocks, game_length, port, seed, size_x, size_y;
+                initial_blocks, game_length, port, size_x, size_y;
         uint64_t turn_duration;
+        long long seed;
         std::string name;
 
         po::options_description desc("Allowed options");
@@ -71,7 +72,7 @@ int main(int argc, char *argv[]) {
                  po::value<int>(&port)->required()->notifier(&check_uint16),
                  "port number")
                 ("seed,s",
-                 po::value<int>(&seed)->notifier(&check_uint32),
+                 po::value<long long>(&seed)->notifier(&check_uint32),
                  "seed")
                 ("size-x,x",
                  po::value<int>(&size_x)->required()->notifier(&check_uint16),
@@ -87,7 +88,7 @@ int main(int argc, char *argv[]) {
             return 0;
         }
         if (!vm.count("seed")) {
-            seed = (int) std::chrono::system_clock::now().time_since_epoch().count();
+            seed = (long long) std::chrono::system_clock::now().time_since_epoch().count();
         }
         po::notify(vm);
 
@@ -100,7 +101,7 @@ int main(int argc, char *argv[]) {
                 (uint16_t) vm["game-length"].as<int>(),
                 vm["server-name"].as<std::string>(),
                 (uint16_t) vm["port"].as<int>(),
-                (uint32_t) vm["seed"].as<int>(),
+                (uint32_t) vm["seed"].as<long long>(),
                 (uint16_t) vm["size-x"].as<int>(),
                 (uint16_t) vm["size-y"].as<int>());
 

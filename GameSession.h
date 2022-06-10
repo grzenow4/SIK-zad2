@@ -26,6 +26,17 @@ public:
 
     void start();
 
+    void send_hello(ServerParameters server_params);
+
+    void send_accepted_player(player_id_t player_id, Player player);
+
+    void send_game_started(std::map<player_id_t, Player> map);
+
+    void send_turn(uint16_t turn, std::list<Event> list);
+
+    void send_game_ended(std::map<player_id_t, score_t> map);
+
+private:
     void clear_buffer();
 
     void read_message();
@@ -75,14 +86,4 @@ public:
     void send(std::map<player_id_t, Player> map);
 
     void send(std::map<player_id_t, score_t> map);
-
-    void send_hello(ServerParameters server_params);
-
-    void send_accepted_player(player_id_t player_id, Player player);
-
-    void send_game_started(std::map<player_id_t, Player> map);
-
-    void send_turn(uint16_t turn, std::list<Event> list);
-
-    void send_game_ended(std::map<player_id_t, score_t> map);
 };

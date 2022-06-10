@@ -102,6 +102,11 @@ public:
     }
 };
 
+struct ClientMessage {
+    int message_id;
+    Direction direction = Up; // TODO
+};
+
 struct GameStatus {
     uint16_t turn;
     std::map<uint16_t, std::list<Event>> turns;

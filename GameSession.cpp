@@ -28,6 +28,7 @@ void GameSession::read_message() {
         boost::asio::buffer(_buffer + _buf_len, BUFF_SIZE),
         [this](boost::system::error_code ec, std::size_t len) {
             if (ec) {
+                std::cerr << "Error in receiving message from client.\n";
                 _room.disconnect(shared_from_this());
             } else {
                 _buf_len += len;
@@ -61,7 +62,8 @@ void GameSession::send_message() {
         boost::asio::buffer(_buffer, _buf_len),
         [this](boost::system::error_code ec, std::size_t) {
             if (ec) {
-                exit(1);
+                std::cerr << "Error in sending message to client.\n";
+                _room.disconnect(shared_from_this());
             }
         });
 }
@@ -87,17 +89,17 @@ void GameSession::receive_join() {
 }
 
 void GameSession::receive_place_bomb() {
-    _room._moves.insert({shared_from_this(), {1, -1}});
+    _room.add_message(shared_from_this(), ClientMessage{.message_id = 1});
 }
 
 void GameSession::receive_place_block() {
-    _room._moves.insert({shared_from_this(), {2, -1}});
+    _room.add_message(shared_from_this(), ClientMessage{.message_id = 2});
 }
 
 void GameSession::receive_move() {
     uint8_t dir;
     receive(dir);
-    _room._moves.insert({shared_from_this(), {3, dir}});
+    _room.add_message(shared_from_this(), ClientMessage{.message_id = 1, .direction = (Direction) dir});
 }
 
 void GameSession::send(uint8_t num) {
@@ -181,6 +183,10 @@ void GameSession::send(std::list<Event> list) {
             break;
         case BlockPlacedT:
             send(std::get<BlockPlaced>(el.item));
+            break;
+        default:
+            std::cerr << "Wrong EventId.\n";
+            exit(1);
             break;
         }
     }
